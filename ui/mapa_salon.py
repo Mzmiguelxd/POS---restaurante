@@ -15,6 +15,8 @@ class MapaSalon(tk.Frame):
         self.pedido_service = pedido_service
         self.reporte_service = reporte_service
         self.botones = {}
+        self._ventanas = {}     # mesa.id -> ventana abierta (evita duplicados)
+        self._cocina = None
         self._construir()
         self.refrescar()
 
@@ -34,7 +36,7 @@ class MapaSalon(tk.Frame):
             if mesa.id not in self.botones:
                 fila, col = divmod(mesa.numero - 1, self.COLUMNAS)
                 btn = tk.Button(self.grilla, text=f"Mesa {mesa.numero}", font=("Arial", 16, "bold"),
-                                fg="white", width=10, height=3,
+                                fg="white", activeforeground="white", width=10, height=3,
                                 command=lambda m=mesa: self._abrir_mesa(m))
                 btn.grid(row=fila, column=col, padx=6, pady=6, sticky="nsew")
                 self.botones[mesa.id] = btn
@@ -43,10 +45,25 @@ class MapaSalon(tk.Frame):
             self.grilla.columnconfigure(c, weight=1)
 
     def _abrir_mesa(self, mesa):
-        TomaPedido(self, mesa, self.pedido_service, on_cerrar=self.refrescar)
+        ventana = self._ventanas.get(mesa.id)
+        if ventana is not None and ventana.winfo_exists():
+            ventana.lift(); ventana.focus_set()      # ya estaba abierta: solo traerla al frente
+            return
+        self._ventanas[mesa.id] = TomaPedido(self, mesa, self.pedido_service,
+                                             on_cerrar=self._al_cerrar_mesa)
+
+    def _al_cerrar_mesa(self, id_mesa):
+        self._ventanas.pop(id_mesa, None)
+        self.refrescar()
 
     def _abrir_cocina(self):
-        VentanaCocina(self, self.pedido_service)
+        if self._cocina is not None and self._cocina.winfo_exists():
+            self._cocina.lift()
+            return
+        self._cocina = VentanaCocina(self, self.pedido_service, on_cerrar=self._al_cerrar_cocina)
+
+    def _al_cerrar_cocina(self):
+        self._cocina = None
 
     def _mostrar_reporte(self):
         v = self.reporte_service.ventas_del_dia()

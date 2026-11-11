@@ -35,8 +35,15 @@ CREATE TABLE DetallePedido (
     id_plato        INT NOT NULL REFERENCES Plato(id),
     cantidad        INT NOT NULL CHECK (cantidad > 0),
     precio_unitario DECIMAL(10,2) NOT NULL,   -- precio congelado al vender
-    nota            VARCHAR(150) NULL
+    nota            VARCHAR(150) NULL,
+    estado          VARCHAR(10) NOT NULL DEFAULT 'PENDIENTE'
+                    CHECK (estado IN ('PENDIENTE','LISTO'))  -- estado en cocina
 );
+GO
+
+-- Una mesa solo puede tener UN pedido abierto a la vez
+CREATE UNIQUE INDEX UX_Pedido_MesaActiva ON Pedido(id_mesa)
+    WHERE estado <> 'FINALIZADO';
 GO
 
 -- Datos iniciales: 23 mesas
