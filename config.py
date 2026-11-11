@@ -3,11 +3,11 @@
 # Ajusta SERVER según tu instalación de SQL Server.
 # SQL Server Express suele ser: r"localhost\SQLEXPRESS"
 DB_CONFIG = {
-    "driver": "ODBC Driver 17 for SQL Server",  # o 18
-    "server": r"localhost\SQLEXPRESS",
+    "driver": "ODBC Driver 17 for SQL Server",  # lo confirmamos abajo
+    "server": "HeliosNeo",
     "database": "PosShunFa",
-    "trusted_connection": False,  # Autenticación de Windows
-    "user": None,                # solo si trusted_connection = False
+    "trusted_connection": True,  # Autenticación de Windows
+    "user": None,
     "password": None,
 }
 
