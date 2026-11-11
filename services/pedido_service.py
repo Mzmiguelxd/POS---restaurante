@@ -12,31 +12,57 @@ class PedidoService:
     # ---------- Menú ----------
     def listar_platos(self):
         filas = self.db.consultar(
-            "SELECT id, nombre, categoria, precio, activo FROM Plato "
+            "SELECT id, nombre, categoria, precio, activo, imagen FROM Plato "
             "WHERE activo = 1 ORDER BY categoria, nombre")
-        return [Plato(f.id, f.nombre, f.categoria, f.precio, f.activo) for f in filas]
+        return [Plato(f.id, f.nombre, f.categoria, f.precio, f.activo, f.imagen) for f in filas]
 
     # ---------- Pedido ----------
     def pedido_activo_de_mesa(self, id_mesa):
         """Pedido no finalizado de la mesa (o None)."""
         filas = self.db.consultar(
-            "SELECT TOP 1 id, id_mesa, fecha_inicio, estado, total FROM Pedido "
-            "WHERE id_mesa = ? AND estado <> 'FINALIZADO' ORDER BY id DESC", (id_mesa,))
+            "SELECT TOP 1 p.id, p.id_mesa, m.numero, p.fecha_inicio, p.estado, p.total, "
+            "p.observaciones, p.metodo_pago, u.nombres, u.apellidos "
+            "FROM Pedido p JOIN Mesa m ON m.id = p.id_mesa "
+            "LEFT JOIN Usuario u ON u.id = p.id_usuario "
+            "WHERE p.id_mesa = ? AND p.estado <> 'FINALIZADO' ORDER BY p.id DESC", (id_mesa,))
         if not filas:
             return None
         f = filas[0]
-        pedido = Pedido(f.id, f.id_mesa, f.fecha_inicio, f.estado, f.total)
+        mozo = f"{f.nombres} {f.apellidos}" if f.nombres else None
+        pedido = Pedido(f.id, f.id_mesa, f.fecha_inicio, f.estado, f.total,
+                        observaciones=f.observaciones, metodo_pago=f.metodo_pago,
+                        mozo=mozo, numero_mesa=f.numero)
         pedido.detalles = self.listar_detalles(pedido.id)
         return pedido
 
-    def abrir_pedido(self, id_mesa):
+    def confirmar_orden(self, id_mesa, items, observaciones="", id_usuario=None):
+        """Guarda una ronda de platos (items = [(plato, cantidad), ...]) y la envía a cocina."""
+        items = [(p, c) for p, c in items if c > 0]
+        if not items:
+            raise ValueError("La orden no tiene platos.")
+        id_pedido = self.abrir_pedido(id_mesa, id_usuario)
+        for plato, cantidad in items:
+            self.agregar_detalle(id_pedido, plato, cantidad)
+        if observaciones and observaciones.strip():
+            self.agregar_observacion(id_pedido, observaciones)
+        return id_pedido
+
+    def agregar_observacion(self, id_pedido, texto):
+        texto = texto.strip()[:150]
+        actual = self.db.consultar("SELECT observaciones FROM Pedido WHERE id = ?",
+                                   (id_pedido,))[0].observaciones
+        nuevo = f"{actual} | {texto}" if actual else texto
+        self.db.ejecutar("UPDATE Pedido SET observaciones = ? WHERE id = ?", (nuevo[:400], id_pedido))
+
+    def abrir_pedido(self, id_mesa, id_usuario=None):
         """Devuelve el pedido abierto de la mesa; si no hay, crea uno.
         Nunca deja dos pedidos abiertos para la misma mesa."""
         existente = self.pedido_activo_de_mesa(id_mesa)
         if existente:
             return existente.id
         try:
-            id_pedido = self.db.insertar("INSERT INTO Pedido (id_mesa) VALUES (?)", (id_mesa,))
+            id_pedido = self.db.insertar(
+                "INSERT INTO Pedido (id_mesa, id_usuario) VALUES (?, ?)", (id_mesa, id_usuario))
         except Exception:
             # Otro equipo lo abrió justo antes (lo impide el índice único)
             existente = self.pedido_activo_de_mesa(id_mesa)
@@ -121,7 +147,7 @@ class PedidoService:
     # ---------- Cocina ----------
     def pendientes_cocina(self):
         return self.db.consultar(
-            "SELECT p.id, m.numero AS mesa, p.fecha_inicio FROM Pedido p "
+            "SELECT p.id, m.numero AS mesa, p.fecha_inicio, p.observaciones FROM Pedido p "
             "JOIN Mesa m ON m.id = p.id_mesa WHERE p.estado = 'PENDIENTE' ORDER BY p.fecha_inicio")
 
     def tiene_platos_listos(self, id_pedido):
@@ -143,7 +169,11 @@ class PedidoService:
         self._actualizar(id_pedido)
 
     # ---------- Cierre ----------
-    def finalizar(self, pedido):
+    def finalizar(self, pedido, metodo_pago):
+        if metodo_pago not in Pedido.METODOS_PAGO:
+            raise ValueError("Elija un método de pago.")
         self.db.ejecutar(
-            "UPDATE Pedido SET estado='FINALIZADO', fecha_fin=GETDATE() WHERE id=?", (pedido.id,))
+            "UPDATE Pedido SET estado='FINALIZADO', fecha_fin=GETDATE(), metodo_pago=? WHERE id=?",
+            (metodo_pago, pedido.id))
+        pedido.estado, pedido.metodo_pago = Pedido.FINALIZADO, metodo_pago
         self.mesas.cambiar_estado(pedido.id_mesa, Mesa.LIBRE)

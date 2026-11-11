@@ -1,8 +1,26 @@
--- Esquema POS Chifa Shun Fa (SQL Server)
+-- Esquema POS Chifa Shun Fa (SQL Server) - versión 3 (con usuarios y pagos)
+-- Para una BD creada con versiones anteriores, usa migracion_001.sql y migracion_002.sql
 IF DB_ID('PosShunFa') IS NULL CREATE DATABASE PosShunFa;
 GO
 USE PosShunFa;
 GO
+
+CREATE TABLE Usuario (
+    id                INT IDENTITY(1,1) PRIMARY KEY,
+    nombres           VARCHAR(60)  NOT NULL,
+    apellidos         VARCHAR(60)  NOT NULL,
+    correo            VARCHAR(120) NOT NULL UNIQUE,
+    password_hash     VARCHAR(200) NOT NULL,          -- PBKDF2 con sal, nunca texto plano
+    fecha_nacimiento  DATE NULL,
+    telefono          VARCHAR(20)  NULL,
+    foto              VARCHAR(200) NULL,
+    rol               VARCHAR(10)  NOT NULL DEFAULT 'USUARIO'
+                      CHECK (rol IN ('ADMIN','USUARIO')),
+    estado            VARCHAR(12)  NOT NULL DEFAULT 'AUSENTE'
+                      CHECK (estado IN ('TRABAJANDO','AUSENTE')),
+    activo            BIT NOT NULL DEFAULT 1,
+    fecha_registro    DATETIME NOT NULL DEFAULT GETDATE()
+);
 
 CREATE TABLE Mesa (
     id      INT IDENTITY(1,1) PRIMARY KEY,
@@ -16,16 +34,20 @@ CREATE TABLE Plato (
     nombre     VARCHAR(80) NOT NULL,
     categoria  VARCHAR(40) NOT NULL,
     precio     DECIMAL(10,2) NOT NULL CHECK (precio >= 0),
+    imagen     VARCHAR(200) NULL,       -- opcional: ruta a la foto del plato
     activo     BIT NOT NULL DEFAULT 1
 );
 
 CREATE TABLE Pedido (
     id            INT IDENTITY(1,1) PRIMARY KEY,
     id_mesa       INT NOT NULL REFERENCES Mesa(id),
+    id_usuario    INT NULL REFERENCES Usuario(id),   -- mozo que abrió el pedido
     fecha_inicio  DATETIME NOT NULL DEFAULT GETDATE(),
     fecha_fin     DATETIME NULL,
     estado        VARCHAR(12) NOT NULL DEFAULT 'PENDIENTE'
                   CHECK (estado IN ('PENDIENTE','LISTO','FINALIZADO')),
+    observaciones VARCHAR(400) NULL,
+    metodo_pago   VARCHAR(10) NULL CHECK (metodo_pago IN ('EFECTIVO','TARJETA','YAPE')),
     total         DECIMAL(10,2) NOT NULL DEFAULT 0
 );
 
@@ -73,3 +95,5 @@ INSERT INTO Plato (nombre, categoria, precio) VALUES
 ('Té (pote)',               'Bebidas',   4.00),
 ('Gaseosa personal',        'Bebidas',   4.50);
 GO
+-- El usuario administrador inicial lo crea el programa al arrancar
+-- (admin@shunfa.pe / Admin123). Cambia esa contraseña en CONFIGURACIÓN.
