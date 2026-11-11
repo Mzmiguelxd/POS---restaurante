@@ -6,7 +6,7 @@ DB_CONFIG = {
     "driver": "ODBC Driver 17 for SQL Server",  # o 18
     "server": r"localhost\SQLEXPRESS",
     "database": "PosShunFa",
-    "trusted_connection": True,  # Autenticación de Windows
+    "trusted_connection": False,  # Autenticación de Windows
     "user": None,                # solo si trusted_connection = False
     "password": None,
 }
